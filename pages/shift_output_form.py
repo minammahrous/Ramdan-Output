@@ -29,6 +29,39 @@ check_access(["user", "power user", "admin"])
 # Get the correct database engine for the assigned branch
 engine = get_sqlalchemy_engine()
 
+def reset_form():
+    """Fully resets all form inputs, including downtime and batch entries, without logging out the user."""
+    
+    # ✅ Safely reset form fields
+    st.session_state.pop("machine", None)
+    st.session_state.pop("shift_type", None)
+    st.session_state.pop("shift_duration", None)
+    st.session_state.pop("selected_product", None)
+    st.session_state.pop("product_batches", None)
+    
+    # ✅ Ensure submitted data is cleared
+    st.session_state.pop("submitted_archive_df", None)
+    st.session_state.pop("submitted_av_df", None)
+    st.session_state.pop("modify_mode", None)
+    st.session_state.pop("proceed_clicked", None)
+    st.session_state.pop("show_confirmation", None)
+    st.session_state.pop("replace_data", None)
+    st.session_state.pop("restart_form", None)
+    st.session_state.pop("submitted", None)
+
+    # ✅ Reset downtime entries
+    downtime_types = [
+        "Maintenance DT", "Production DT", "Material DT", "Utility DT", 
+        "QC DT", "Cleaning DT", "QA DT", "Changeover DT"
+    ]
+    
+    for dt_type in downtime_types:
+        st.session_state.pop(dt_type, None)  # ✅ Remove downtime hours
+        st.session_state.pop(f"{dt_type}_comment", None)  # ✅ Remove downtime comments
+
+    st.toast("🔄 Form reset successfully!")
+    st.rerun()  # ✅ Force UI refresh to clear inputs
+    
 def save_to_database(archive_df, av_df):
     """Saves archive and av dataframes to PostgreSQL using SQLAlchemy."""
     engine = get_sqlalchemy_engine()
@@ -130,10 +163,8 @@ if "submitted_av_df" not in st.session_state:
 if "modify_mode" not in st.session_state:
     st.session_state.modify_mode = False
 if st.button("Restart App"):
-    st.markdown(
-        """<meta http-equiv="refresh" content="0">""",
-        unsafe_allow_html=True,
-    )
+    reset_form()
+    st.rerun()  # ✅ Force rerun to apply changes
 # Check if product_list is empty
 if not product_list:
     st.error("Product list is empty. Please check products.csv.")
@@ -154,7 +185,7 @@ else:
 # Step 1: User selects Date, Machine, and Shift Type
 st.subheader("Step 1: Select Shift Details")
 shift_types = ["Day", "Night", "Plan"]
-date = st.date_input("Date", None, key="date")  
+date = st.date_input("Date", value=st.session_state.get("date", datetime.date.today()), key="date")
 selected_machine = st.selectbox("Select Machine", [""] + machine_list, index=0, key="machine")
 shift_type = st.selectbox("Shift Type", [""] + shift_types, index=0, key="shift_type")
 if st.button("Proceed"):
@@ -222,19 +253,31 @@ if st.session_state.get("proceed_clicked", False):
     
 shift_duration = st.selectbox("Shift Duration", [""] + shift_durations, index=0, key="shift_duration")
     
-    # Downtime inputs with comments
+# Define downtime categories
+downtime_types = [
+    "Maintenance DT", "Production DT", "Material DT", "Utility DT", 
+    "QC DT", "Cleaning DT", "QA DT", "Changeover DT"
+]
+
 st.subheader("Downtime (hours)")
 downtime_data = {}
-downtime_types = ["Maintenance DT", "Production DT", "Material DT", "Utility DT", "QC DT", "Cleaning DT", "QA DT", "Changeover DT"]
+
 for dt_type in downtime_types:
-        col1, col2 = st.columns(2)
-        with col1:
-            downtime_data[dt_type] = st.number_input(dt_type, min_value=0.0, step=0.1, format="%.1f")
-        with col2:
-            if downtime_data[dt_type] > 0:
-                downtime_data[dt_type + "_comment"] = st.text_area(f"Comment for {dt_type}", placeholder="Enter comment here (required for downtime)")
-            else:
-                downtime_data[dt_type + "_comment"] = ""
+    col1, col2 = st.columns(2)
+    with col1:
+        downtime_data[dt_type] = st.number_input(
+            dt_type, min_value=0.0, step=0.1, format="%.1f",
+            key=dt_type, value=st.session_state.get(dt_type, 0.0)  # ✅ Use default 0.0 if not set
+        )
+    with col2:
+        if downtime_data[dt_type] > 0:
+            downtime_data[f"{dt_type}_comment"] = st.text_area(
+                f"Comment for {dt_type}",
+                value=st.session_state.get(f"{dt_type}_comment", ""),  # ✅ Use default empty string
+                placeholder="Enter comment here (required for downtime)",
+                key=f"{dt_type}_comment"
+            )
+
 
 if "product_batches" not in st.session_state:
     st.session_state.product_batches = {}
@@ -534,6 +577,8 @@ if st.button("Approve and Save"):
                 archive_df.to_sql("archive", engine, if_exists="append", index=False)
                 av_df.to_sql("av", engine, if_exists="append", index=False)
                 st.success("Data saved to database successfully!")
-
+                # ✅ Reset form after successful save
+                reset_form()
+                st.rerun()  # ✅ Force rerun to apply changes
     except Exception as e:
         st.error(f"Error saving data: {e}")

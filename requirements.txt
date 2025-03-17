@@ -1,0 +1,17 @@
+streamlit
+psycopg2-binary
+sqlalchemy
+plotly
+matplotlib
+pandas
+bcrypt
+fpdf
+xlsxwriter
+fpdf2
+pandas
+plotly
+Pillow
+matplotlib
+reportlab
+Kaleido
+bs4
